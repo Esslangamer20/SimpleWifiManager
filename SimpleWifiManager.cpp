@@ -1,46 +1,60 @@
 #include "SimpleWiFiManager.h"
 
+// Constructor
 SimpleWiFiManager::SimpleWiFiManager() {
     _ssid = nullptr;
     _password = nullptr;
     _connected = false;
+    _dataMode = DATA_SERIAL; // por defecto Serial
+#if defined(ESP32)
+    BT.begin("ESP32_BT"); // inicia Bluetooth en ESP32
+#endif
 }
 
+// Cambiar modo de salida de datos
+void SimpleWiFiManager::setDataMode(DataModeType mode) {
+    _dataMode = mode;
+}
+
+// Función segura para enviar mensajes
+void SimpleWiFiManager::sendData(const String &msg) {
+    if (_dataMode == DATA_SERIAL) Serial.println(msg);
+#if defined(ESP32)
+    else if (_dataMode == DATA_BLUETOOTH) BT.println(msg);
+#endif
+}
+
+// Inicia WiFi / AP
 void SimpleWiFiManager::begin() {
 #if defined(ESP32)
     prefs.begin("wifi", false);
     _ssid = prefs.getString("ssid").c_str();
     _password = prefs.getString("pass").c_str();
 #elif defined(ESP8266)
-    char savedSSID[32];
-    char savedPASS[64];
+    char savedSSID[32]; char savedPASS[64];
     loadWiFiEEPROM(savedSSID, savedPASS);
     _ssid = savedSSID;
     _password = savedPASS;
 #endif
 
     if (!_ssid || strlen(_ssid) == 0) {
-        // No hay WiFi guardado → crear AP
         startAP();
         startWebServer();
     } else {
-        // Conectar a WiFi guardado
+        sendData("Conectando a WiFi: " + String(_ssid));
         WiFi.begin(_ssid, _password);
-        Serial.print("Conectando a WiFi: "); Serial.println(_ssid);
     }
 }
 
+// Mantener conexión y manejar portal web
 void SimpleWiFiManager::loop() {
 #if defined(ESP32) || defined(ESP8266)
-    if (WiFi.status() == WL_CONNECTED) {
-        _connected = true;
-    } else {
-        _connected = false;
-    }
+    if (WiFi.status() == WL_CONNECTED) _connected = true;
+    else _connected = false;
 
     static bool printedIP = false;
     if (_connected && !printedIP) {
-        Serial.print("Conectado! IP: "); Serial.println(WiFi.localIP());
+        sendData("Conectado! IP: " + WiFi.localIP().toString());
         printedIP = true;
     }
 
@@ -48,7 +62,7 @@ void SimpleWiFiManager::loop() {
     if (Serial.available()) {
         String cmd = Serial.readStringUntil('\n'); cmd.trim();
         if (cmd.equalsIgnoreCase("RESET")) {
-            Serial.println("RESET recibido. Reiniciando...");
+            sendData("RESET recibido. Reiniciando...");
             reset();
         }
     }
@@ -58,31 +72,33 @@ void SimpleWiFiManager::loop() {
 #endif
 }
 
+// Reset de WiFi
 void SimpleWiFiManager::reset() {
 #if defined(ESP32)
     prefs.clear();
 #elif defined(ESP8266)
     saveWiFiEEPROM("", "");
 #endif
-    _ssid = nullptr;
-    _password = nullptr;
+    _ssid = nullptr; _password = nullptr;
     ESP.restart();
 }
 
+// Crear AP
 void SimpleWiFiManager::startAP() {
-    Serial.println("Creando Access Point...");
+    sendData("Creando Access Point...");
     WiFi.softAP("SimpleWiFiManager");
-    Serial.print("IP AP: "); Serial.println(WiFi.softAPIP());
+    sendData("IP AP: " + WiFi.softAPIP().toString());
 }
 
+// Inicia WebServer con formulario
 void SimpleWiFiManager::startWebServer() {
     server.on("/", [&]{ handleRoot(); });
     server.on("/connect", [&]{ handleConnect(); });
     server.begin();
-    Serial.println("Servidor web iniciado en AP");
+    sendData("Servidor web iniciado en AP");
 }
 
-// Muestra la página principal con SSID detectadas
+// Página principal con redes escaneadas
 void SimpleWiFiManager::handleRoot() {
     String page = "<h1>Configura tu WiFi</h1>";
     page += "<form action='/connect' method='POST'>";
@@ -105,7 +121,9 @@ void SimpleWiFiManager::handleConnect() {
         _ssid = server.arg("ssid").c_str();
         _password = server.arg("pass").c_str();
 
-        Serial.print("Conectando a: "); Serial.println(_ssid);
+        sendData("Conectando a WiFi: " + String(_ssid));
+        sendData("Password: " + String(_password).substring(0,0) + String("*")); // Feedback visual solo *
+
         WiFi.begin(_ssid, _password);
 
 #if defined(ESP32)
@@ -116,7 +134,7 @@ void SimpleWiFiManager::handleConnect() {
 #endif
         server.send(200, "text/html", "<h1>Intentando conectar...</h1>");
     } else {
-        server.send(200, "text/html", "<h1>Error: Faltan datos</h1>");
+        server.send(200, "text/html", "<h1>Error: faltan datos</h1>");
     }
 }
 
