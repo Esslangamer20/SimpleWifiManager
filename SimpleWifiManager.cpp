@@ -1,96 +1,78 @@
 #include "SimpleWiFiManager.h"
 
-// ==========================
-// Metodo principal
-// ==========================
-void SimpleWiFiManager::begin() {
-  // Abre el espacio de memoria llamado "wifi"
-  prefs.begin("wifi", false);
-
-  // Lee SSID y password guardados
-  ssid = prefs.getString("ssid", "");
-  pass = prefs.getString("pass", "");
-
-  // Si hay un SSID guardado, intenta conectar
-  if (ssid.length() > 0) {
-    WiFi.mode(WIFI_STA);
-    WiFi.begin(ssid.c_str(), pass.c_str());
-
-    // Espera hasta 10 segundos a que conecte
-    unsigned long start = millis();
-    while (WiFi.status() != WL_CONNECTED && millis() - start < 10000) {
-      delay(500);
-    }
-
-    // Si conecto correctamente
-    if (WiFi.status() == WL_CONNECTED) {
-      Serial.println("WiFi conectado");
-      Serial.println(WiFi.localIP());
-      return; // Sale sin abrir portal
-    }
-  }
-
-  // Si no conecto, abre portal
-  startPortal();
+SimpleWiFiManager::SimpleWiFiManager() {
+    _ssid = nullptr;
+    _password = nullptr;
+    _connected = false;
 }
 
-// ==========================
-// Portal de configuracion
-// ==========================
-void SimpleWiFiManager::startPortal() {
-  // Cambia a modo Access Point
-  WiFi.mode(WIFI_AP);
-  WiFi.softAP("ESP32-Setup");
+void SimpleWiFiManager::begin(const char* ssid, const char* password) {
+    _ssid = ssid;
+    _password = password;
 
-  // Crea el servidor web
-  server = new WebServer(80);
+#if defined(ESP32)
+    prefs.begin("wifi", false);
 
-  // Pagina principal
-  server->on("/", [this]() {
-    server->send(200, "text/html",
-      "<h2>Configurar WiFi</h2>"
-      "<form action='/save'>"
-      "SSID:<br><input name='s'><br><br>"
-      "Password:<br><input name='p' type='password'><br><br>"
-      "<input type='submit' value='Guardar'>"
-      "</form>"
-    );
-  });
+    // Si no pasaron SSID, cargar guardado
+    if (!_ssid) {
+        _ssid = prefs.getString("ssid").c_str();
+        _password = prefs.getString("pass").c_str();
+    }
 
-  // Guardar datos
-  server->on("/save", [this]() {
-    ssid = server->arg("s");
-    pass = server->arg("p");
+    WiFi.begin(_ssid, _password);
 
-    // Guarda en memoria flash
-    prefs.putString("ssid", ssid);
-    prefs.putString("pass", pass);
+#elif defined(ESP8266)
+    char savedSSID[32];
+    char savedPASS[64];
 
-    server->send(200, "text/html", "Guardado. Reiniciando...");
-    delay(1500);
-    ESP.restart();
-  });
+    // Si no pasaron SSID, cargar guardado
+    if (!_ssid) {
+        loadWiFiEEPROM(savedSSID, savedPASS);
+        _ssid = savedSSID;
+        _password = savedPASS;
+    }
 
-  // Inicia servidor
-  server->begin();
+    WiFi.begin(_ssid, _password);
+#endif
 }
 
-// ==========================
-// Mantiene el servidor vivo
-// ==========================
 void SimpleWiFiManager::loop() {
-  if (server) {
-    server->handleClient();
-  }
+    // Mantener WiFi conectado
+#if defined(ESP32)
+    if (WiFi.status() == WL_CONNECTED) {
+        _connected = true;
+    } else {
+        _connected = false;
+    }
+#elif defined(ESP8266)
+    if (WiFi.status() == WL_CONNECTED) {
+        _connected = true;
+    } else {
+        _connected = false;
+    }
+#endif
 }
 
-// ==========================
-// Borra WiFi guardado
-// ==========================
 void SimpleWiFiManager::reset() {
-  prefs.begin("wifi", false);
-  prefs.clear();
-  prefs.end();
-
-  ESP.restart();
+#if defined(ESP32)
+    prefs.clear();
+#elif defined(ESP8266)
+    saveWiFiEEPROM("", "");
+#endif
+    ESP.restart();
 }
+
+#if defined(ESP8266)
+void SimpleWiFiManager::saveWiFiEEPROM(const char* ssid, const char* password) {
+    EEPROM.begin(512);
+    for (int i = 0; i < 32; i++) EEPROM.write(i, ssid[i]);
+    for (int i = 0; i < 64; i++) EEPROM.write(32 + i, password[i]);
+    EEPROM.commit();
+}
+
+void SimpleWiFiManager::loadWiFiEEPROM(char* ssid, char* password) {
+    EEPROM.begin(512);
+    for (int i = 0; i < 32; i++) ssid[i] = EEPROM.read(i);
+    for (int i = 0; i < 64; i++) password[i] = EEPROM.read(32 + i);
+}
+#endif
