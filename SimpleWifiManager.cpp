@@ -79,7 +79,6 @@ void SimpleWiFiManager::startPortal() {
 // Mantiene el servidor vivo
 // ==========================
 void SimpleWiFiManager::loop() {
-  // Atiende peticiones web si el portal esta activo
   if (server) {
     server->handleClient();
   }
@@ -89,11 +88,9 @@ void SimpleWiFiManager::loop() {
 // Borra WiFi guardado
 // ==========================
 void SimpleWiFiManager::reset() {
-  // Borra preferencias
   prefs.begin("wifi", false);
   prefs.clear();
   prefs.end();
 
-  // Reinicia el ESP32
   ESP.restart();
-}}
+}
