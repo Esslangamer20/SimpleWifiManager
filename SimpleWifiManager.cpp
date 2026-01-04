@@ -111,6 +111,55 @@ void SimpleWiFiManager::loadWiFiEEPROM(char* ssid, char* password) {
     for (int i = 0; i < 32; i++) ssid[i] = EEPROM.read(i);
     for (int i = 0; i < 64; i++) password[i] = EEPROM.read(32 + i);
 }
+#endif    } else {
+        _connected = false;
+    }
+
+    // Imprimir IP solo la primera vez
+    static bool printedIP = false;
+    if (_connected && !printedIP) {
+        Serial.print("Conectado! IP: ");
+        Serial.println(WiFi.localIP());
+        printedIP = true;
+    }
+
+    // RESET por Serial
+    if (Serial.available()) {
+        String cmd = Serial.readStringUntil('\n');
+        cmd.trim();
+        if (cmd.equalsIgnoreCase("RESET")) {
+            Serial.println("Comando RESET recibido. Reiniciando...");
+            reset();
+        }
+    }
+#endif
+}
+
+// Borra WiFi y reinicia
+void SimpleWiFiManager::reset() {
+#if defined(ESP32)
+    prefs.clear();
+#elif defined(ESP8266)
+    saveWiFiEEPROM("", "");
+#endif
+    _ssid = nullptr;
+    _password = nullptr;
+    ESP.restart();
+}
+
+#if defined(ESP8266)
+void SimpleWiFiManager::saveWiFiEEPROM(const char* ssid, const char* password) {
+    EEPROM.begin(512);
+    for (int i = 0; i < 32; i++) EEPROM.write(i, ssid[i]);
+    for (int i = 0; i < 64; i++) EEPROM.write(32 + i, password[i]);
+    EEPROM.commit();
+}
+
+void SimpleWiFiManager::loadWiFiEEPROM(char* ssid, char* password) {
+    EEPROM.begin(512);
+    for (int i = 0; i < 32; i++) ssid[i] = EEPROM.read(i);
+    for (int i = 0; i < 64; i++) password[i] = EEPROM.read(32 + i);
+}
 #endif#if defined(ESP8266)
 void SimpleWiFiManager::saveWiFiEEPROM(const char* ssid, const char* password) {
     EEPROM.begin(512);
