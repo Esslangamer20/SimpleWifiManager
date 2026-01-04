@@ -5,25 +5,23 @@ SimpleWiFiManager wifi;
 void setup() {
   Serial.begin(115200);
   delay(1000);
+
   Serial.println("Iniciando SimpleWiFiManager...");
 
-  // Inicia WiFi (puedes poner SSID y password)
+  // Llamar sin parámetros para WiFi automático / AP
   wifi.begin();
 }
 
 void loop() {
-  // Mantiene WiFi activo
   wifi.loop();
 
-  // Revisar si llega algo por Serial
+  // Mensaje por Serial si RESET
   if (Serial.available()) {
-    String cmd = Serial.readStringUntil('\n'); // Lee hasta Enter
-
-    cmd.trim(); // Quita espacios y saltos
-
+    String cmd = Serial.readStringUntil('\n');
+    cmd.trim();
     if (cmd.equalsIgnoreCase("RESET")) {
-      Serial.println("Comando RESET recibido. Reiniciando WiFi...");
-      wifi.reset(); // Borra datos guardados y reinicia
+      Serial.println("RESET recibido desde Serial...");
+      wifi.reset();
     }
   }
 }
