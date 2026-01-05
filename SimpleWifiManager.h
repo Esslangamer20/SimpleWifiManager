@@ -23,13 +23,12 @@ class SimpleWiFiManager {
 public:
   SimpleWiFiManager();
 
+  void setDataMode(DataModeType mode);
   void begin();
   void loop();
   void reset();
 
-  void setDataMode(DataModeType mode);
   bool isConnected();
-
   void sendData(const String &msg);
 
 private:
