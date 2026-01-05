@@ -1,154 +1,183 @@
 #include "SimpleWiFiManager.h"
 
-// Constructor
+/* ================= CONSTRUCTOR ================= */
+
 SimpleWiFiManager::SimpleWiFiManager() {
-    _ssid = nullptr;
-    _password = nullptr;
-    _connected = false;
-    _dataMode = DATA_SERIAL; // por defecto Serial
-#if defined(ESP32)
-    BT.begin("ESP32_BT"); // inicia Bluetooth en ESP32
-#endif
+  _ssid = nullptr;
+  _password = nullptr;
+  _connected = false;
+  _dataMode = DATA_SERIAL;
 }
 
-// Cambiar modo de salida de datos
+/* ================= DATA MODE ================= */
+
 void SimpleWiFiManager::setDataMode(DataModeType mode) {
-    _dataMode = mode;
+#if defined(ESP8266)
+  if (mode == DATA_BLUETOOTH) {
+    Serial.println("ERROR: ESP8266 no tiene Bluetooth, usando Serial");
+    _dataMode = DATA_SERIAL;
+    return;
+  }
+#endif
+  _dataMode = mode;
 }
 
-// Función segura para enviar mensajes
 void SimpleWiFiManager::sendData(const String &msg) {
-    if (_dataMode == DATA_SERIAL) Serial.println(msg);
+  if (_dataMode == DATA_SERIAL) {
+    Serial.println(msg);
+  }
 #if defined(ESP32)
-    else if (_dataMode == DATA_BLUETOOTH) BT.println(msg);
+  else if (_dataMode == DATA_BLUETOOTH) {
+    BT.println(msg);
+  }
 #endif
 }
 
-// Inicia WiFi / AP
+/* ================= BEGIN ================= */
+
 void SimpleWiFiManager::begin() {
+
 #if defined(ESP32)
-    prefs.begin("wifi", false);
-    _ssid = prefs.getString("ssid").c_str();
-    _password = prefs.getString("pass").c_str();
+  if (_dataMode == DATA_BLUETOOTH) {
+    BT.begin("ESP32_BT");
+    sendData("Bluetooth iniciado");
+  }
+#endif
+
+#if defined(ESP32)
+  prefs.begin("wifi", false);
+  String s = prefs.getString("ssid", "");
+  String p = prefs.getString("pass", "");
+  _ssid = s.length() ? strdup(s.c_str()) : nullptr;
+  _password = p.length() ? strdup(p.c_str()) : nullptr;
 #elif defined(ESP8266)
-    char savedSSID[32]; char savedPASS[64];
-    loadWiFiEEPROM(savedSSID, savedPASS);
-    _ssid = savedSSID;
-    _password = savedPASS;
+  static char ssid[32], pass[64];
+  loadWiFiEEPROM(ssid, pass);
+  _ssid = strlen(ssid) ? ssid : nullptr;
+  _password = strlen(pass) ? pass : nullptr;
 #endif
 
-    if (!_ssid || strlen(_ssid) == 0) {
-        startAP();
-        startWebServer();
-    } else {
-        sendData("Conectando a WiFi: " + String(_ssid));
-        WiFi.begin(_ssid, _password);
-    }
+  if (!_ssid) {
+    startAP();
+    startWebServer();
+  } else {
+    sendData("Conectando a WiFi: " + String(_ssid));
+    WiFi.begin(_ssid, _password);
+  }
 }
 
-// Mantener conexión y manejar portal web
+/* ================= LOOP ================= */
+
 void SimpleWiFiManager::loop() {
-#if defined(ESP32) || defined(ESP8266)
-    if (WiFi.status() == WL_CONNECTED) _connected = true;
-    else _connected = false;
-
-    static bool printedIP = false;
-    if (_connected && !printedIP) {
-        sendData("Conectado! IP: " + WiFi.localIP().toString());
-        printedIP = true;
+  if (WiFi.status() == WL_CONNECTED) {
+    if (!_connected) {
+      _connected = true;
+      sendData("Conectado! IP: " + WiFi.localIP().toString());
     }
+  } else {
+    _connected = false;
+  }
 
-    // Reset por Serial
-    if (Serial.available()) {
-        String cmd = Serial.readStringUntil('\n'); cmd.trim();
-        if (cmd.equalsIgnoreCase("RESET")) {
-            sendData("RESET recibido. Reiniciando...");
-            reset();
-        }
+  if (Serial.available()) {
+    String cmd = Serial.readStringUntil('\n');
+    cmd.trim();
+    if (cmd.equalsIgnoreCase("RESET")) {
+      sendData("Reset recibido");
+      reset();
     }
+  }
 
-    // Manejar clientes web
-    server.handleClient();
-#endif
+  server.handleClient();
 }
 
-// Reset de WiFi
+/* ================= RESET ================= */
+
 void SimpleWiFiManager::reset() {
 #if defined(ESP32)
-    prefs.clear();
+  prefs.clear();
 #elif defined(ESP8266)
-    saveWiFiEEPROM("", "");
+  saveWiFiEEPROM("", "");
 #endif
-    _ssid = nullptr; _password = nullptr;
-    ESP.restart();
+  delay(500);
+  ESP.restart();
 }
 
-// Crear AP
+bool SimpleWiFiManager::isConnected() {
+  return _connected;
+}
+
+/* ================= AP + WEB ================= */
+
 void SimpleWiFiManager::startAP() {
-    sendData("Creando Access Point...");
-    WiFi.softAP("SimpleWiFiManager");
-    sendData("IP AP: " + WiFi.softAPIP().toString());
+  WiFi.softAP("SimpleWiFiManager");
+  sendData("AP creado: SimpleWiFiManager");
+  sendData("IP AP: " + WiFi.softAPIP().toString());
 }
 
-// Inicia WebServer con formulario
 void SimpleWiFiManager::startWebServer() {
-    server.on("/", [&]{ handleRoot(); });
-    server.on("/connect", [&]{ handleConnect(); });
-    server.begin();
-    sendData("Servidor web iniciado en AP");
+  server.on("/", [&]() { handleRoot(); });
+  server.on("/connect", [&]() { handleConnect(); });
+  server.begin();
+  sendData("Portal web activo");
 }
 
-// Página principal con redes escaneadas
 void SimpleWiFiManager::handleRoot() {
-    String page = "<h1>Configura tu WiFi</h1>";
-    page += "<form action='/connect' method='POST'>";
-    page += "SSID:<select name='ssid'>";
+  String html = "<h1>Configurar WiFi</h1>";
+  html += "<form action='/connect' method='POST'>";
+  html += "SSID:<select name='ssid'>";
 
-    int n = WiFi.scanNetworks();
-    for (int i = 0; i < n; i++) {
-        String ssid = WiFi.SSID(i);
-        page += "<option value='" + ssid + "'>" + ssid + "</option>";
-    }
-    page += "</select><br>";
-    page += "Password:<input type='password' name='pass'><br>";
-    page += "<input type='submit' value='Conectar'></form>";
-    server.send(200, "text/html", page);
+  int n = WiFi.scanNetworks();
+  for (int i = 0; i < n; i++) {
+    html += "<option value='" + WiFi.SSID(i) + "'>" + WiFi.SSID(i) + "</option>";
+  }
+
+  html += "</select><br>";
+  html += "Password:<input type='password' name='pass'><br>";
+  html += "<input type='submit' value='Conectar'>";
+  html += "</form>";
+
+  server.send(200, "text/html", html);
 }
 
-// Procesa el formulario y conecta
 void SimpleWiFiManager::handleConnect() {
-    if (server.hasArg("ssid") && server.hasArg("pass")) {
-        _ssid = server.arg("ssid").c_str();
-        _password = server.arg("pass").c_str();
+  if (!server.hasArg("ssid") || !server.hasArg("pass")) {
+    server.send(400, "text/html", "Faltan datos");
+    return;
+  }
 
-        sendData("Conectando a WiFi: " + String(_ssid));
-        sendData("Password: " + String(_password).substring(0,0) + String("*")); // Feedback visual solo *
+  _ssid = strdup(server.arg("ssid").c_str());
+  _password = strdup(server.arg("pass").c_str());
 
-        WiFi.begin(_ssid, _password);
+  sendData("Conectando a WiFi: " + String(_ssid));
+
+  String stars = "";
+  for (int i = 0; i < strlen(_password); i++) stars += "*";
+  sendData("Password: " + stars);
 
 #if defined(ESP32)
-        prefs.putString("ssid", _ssid);
-        prefs.putString("pass", _password);
+  prefs.putString("ssid", _ssid);
+  prefs.putString("pass", _password);
 #elif defined(ESP8266)
-        saveWiFiEEPROM(_ssid, _password);
+  saveWiFiEEPROM(_ssid, _password);
 #endif
-        server.send(200, "text/html", "<h1>Intentando conectar...</h1>");
-    } else {
-        server.send(200, "text/html", "<h1>Error: faltan datos</h1>");
-    }
+
+  WiFi.begin(_ssid, _password);
+  server.send(200, "text/html", "<h1>Conectando...</h1>");
 }
+
+/* ================= EEPROM ESP8266 ================= */
 
 #if defined(ESP8266)
-void SimpleWiFiManager::saveWiFiEEPROM(const char* ssid, const char* password) {
-    EEPROM.begin(512);
-    for (int i = 0; i < 32; i++) EEPROM.write(i, ssid[i]);
-    for (int i = 0; i < 64; i++) EEPROM.write(32 + i, password[i]);
-    EEPROM.commit();
+void SimpleWiFiManager::saveWiFiEEPROM(const char* ssid, const char* pass) {
+  EEPROM.begin(512);
+  for (int i = 0; i < 32; i++) EEPROM.write(i, ssid[i]);
+  for (int i = 0; i < 64; i++) EEPROM.write(32 + i, pass[i]);
+  EEPROM.commit();
 }
 
-void SimpleWiFiManager::loadWiFiEEPROM(char* ssid, char* password) {
-    EEPROM.begin(512);
-    for (int i = 0; i < 32; i++) ssid[i] = EEPROM.read(i);
-    for (int i = 0; i < 64; i++) password[i] = EEPROM.read(32 + i);
+void SimpleWiFiManager::loadWiFiEEPROM(char* ssid, char* pass) {
+  EEPROM.begin(512);
+  for (int i = 0; i < 32; i++) ssid[i] = EEPROM.read(i);
+  for (int i = 0; i < 64; i++) pass[i] = EEPROM.read(32 + i);
 }
 #endif
