@@ -1,6 +1,6 @@
 #include "SimpleWiFiManager.h"
 
-/* ================= CONSTRUCTOR ================= */
+/* ========= CONSTRUCTOR ========= */
 
 SimpleWiFiManager::SimpleWiFiManager() {
   _ssid = nullptr;
@@ -9,12 +9,12 @@ SimpleWiFiManager::SimpleWiFiManager() {
   _dataMode = DATA_SERIAL;
 }
 
-/* ================= DATA MODE ================= */
+/* ========= DATA MODE ========= */
 
 void SimpleWiFiManager::setDataMode(DataModeType mode) {
 #if defined(ESP8266)
   if (mode == DATA_BLUETOOTH) {
-    Serial.println("ERROR: ESP8266 no tiene Bluetooth, usando Serial");
+    Serial.println("ESP8266 no tiene Bluetooth, usando Serial");
     _dataMode = DATA_SERIAL;
     return;
   }
@@ -33,7 +33,7 @@ void SimpleWiFiManager::sendData(const String &msg) {
 #endif
 }
 
-/* ================= BEGIN ================= */
+/* ========= BEGIN ========= */
 
 void SimpleWiFiManager::begin() {
 
@@ -66,9 +66,10 @@ void SimpleWiFiManager::begin() {
   }
 }
 
-/* ================= LOOP ================= */
+/* ========= LOOP ========= */
 
 void SimpleWiFiManager::loop() {
+
   if (WiFi.status() == WL_CONNECTED) {
     if (!_connected) {
       _connected = true;
@@ -78,19 +79,32 @@ void SimpleWiFiManager::loop() {
     _connected = false;
   }
 
+  // RESET por Serial
   if (Serial.available()) {
     String cmd = Serial.readStringUntil('\n');
     cmd.trim();
     if (cmd.equalsIgnoreCase("RESET")) {
-      sendData("Reset recibido");
+      sendData("RESET recibido por Serial");
       reset();
     }
   }
 
+#if defined(ESP32)
+  // RESET por Bluetooth
+  if (_dataMode == DATA_BLUETOOTH && BT.available()) {
+    String cmd = BT.readStringUntil('\n');
+    cmd.trim();
+    if (cmd.equalsIgnoreCase("RESET")) {
+      sendData("RESET recibido por Bluetooth");
+      reset();
+    }
+  }
+#endif
+
   server.handleClient();
 }
 
-/* ================= RESET ================= */
+/* ========= RESET ========= */
 
 void SimpleWiFiManager::reset() {
 #if defined(ESP32)
@@ -106,7 +120,7 @@ bool SimpleWiFiManager::isConnected() {
   return _connected;
 }
 
-/* ================= AP + WEB ================= */
+/* ========= AP + WEB ========= */
 
 void SimpleWiFiManager::startAP() {
   WiFi.softAP("SimpleWiFiManager");
@@ -133,8 +147,7 @@ void SimpleWiFiManager::handleRoot() {
 
   html += "</select><br>";
   html += "Password:<input type='password' name='pass'><br>";
-  html += "<input type='submit' value='Conectar'>";
-  html += "</form>";
+  html += "<input type='submit' value='Conectar'></form>";
 
   server.send(200, "text/html", html);
 }
@@ -165,7 +178,7 @@ void SimpleWiFiManager::handleConnect() {
   server.send(200, "text/html", "<h1>Conectando...</h1>");
 }
 
-/* ================= EEPROM ESP8266 ================= */
+/* ========= EEPROM ESP8266 ========= */
 
 #if defined(ESP8266)
 void SimpleWiFiManager::saveWiFiEEPROM(const char* ssid, const char* pass) {
