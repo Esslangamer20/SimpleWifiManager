@@ -11,45 +11,47 @@
   #include <ESP8266WebServer.h>
   #include <EEPROM.h>
 #else
-  #error "SimpleWiFiManager solo soporta ESP32 y ESP8266"
+  #error "Placa no soportada"
 #endif
 
-enum DataModeType { DATA_SERIAL, DATA_BLUETOOTH };
+enum DataModeType {
+  DATA_SERIAL,
+  DATA_BLUETOOTH
+};
 
 class SimpleWiFiManager {
 public:
-    SimpleWiFiManager();
+  SimpleWiFiManager();
 
-    void begin();
-    void loop();
-    void reset();
-    bool isConnected() { return _connected; }
+  void begin();
+  void loop();
+  void reset();
 
-    void setDataMode(DataModeType mode);
+  void setDataMode(DataModeType mode);
+  bool isConnected();
 
-    void sendData(const String &msg); // Mensajes seguros
+  void sendData(const String &msg);
 
 private:
-    const char* _ssid;
-    const char* _password;
-    bool _connected;
-
-    DataModeType _dataMode;
+  const char* _ssid;
+  const char* _password;
+  bool _connected;
+  DataModeType _dataMode;
 
 #if defined(ESP32)
-    Preferences prefs;
-    WebServer server{80};
-    BluetoothSerial BT;
+  Preferences prefs;
+  WebServer server{80};
+  BluetoothSerial BT;
 #elif defined(ESP8266)
-    WebServer server{80};
-    void saveWiFiEEPROM(const char* ssid, const char* password);
-    void loadWiFiEEPROM(char* ssid, char* password);
+  WebServer server{80};
+  void saveWiFiEEPROM(const char* ssid, const char* pass);
+  void loadWiFiEEPROM(char* ssid, char* pass);
 #endif
 
-    void startAP();
-    void startWebServer();
-    void handleRoot();
-    void handleConnect();
+  void startAP();
+  void startWebServer();
+  void handleRoot();
+  void handleConnect();
 };
 
 #endif
