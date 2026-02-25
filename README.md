@@ -43,7 +43,7 @@ RESET
 - Reinicia el ESP32.
 - La conexión Bluetooth se pierde y debe reconectarse manualmente.
 
-  ## Inspiración
+## Inspiración
 
 Al intentar usar WiFiManager en ArduinoDroid aparecieron muchos errores
 de compatibilidad.
