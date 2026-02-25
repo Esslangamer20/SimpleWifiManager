@@ -1,20 +1,16 @@
-#ifndef SIMPLEWIFIMANAGER_H
-#define SIMPLEWIFIMANAGER_H
+#pragma once
 
-#if defined(ESP32)
+#ifdef ESP32
   #include <WiFi.h>
   #include <WebServer.h>
   #include <Preferences.h>
-  #include "BluetoothSerial.h"
-#elif defined(ESP8266)
+  #include <BluetoothSerial.h>
+#else
   #include <ESP8266WiFi.h>
   #include <ESP8266WebServer.h>
-  #include <EEPROM.h>
-#else
-  #error "Placa no soportada"
 #endif
 
-enum DataModeType {
+enum DataMode {
   DATA_SERIAL,
   DATA_BLUETOOTH
 };
@@ -23,34 +19,23 @@ class SimpleWiFiManager {
 public:
   SimpleWiFiManager();
 
-  void setDataMode(DataModeType mode);
   void begin();
   void loop();
   void reset();
-
-  bool isConnected();
-  void sendData(const String &msg);
+  void setDataMode(DataMode mode);
 
 private:
-  const char* _ssid;
-  const char* _password;
-  bool _connected;
-  DataModeType _dataMode;
+  void startPortal();
+  DataMode currentMode = DATA_SERIAL;
 
-#if defined(ESP32)
-  Preferences prefs;
+#ifdef ESP32
   WebServer server{80};
-  BluetoothSerial BT;
-#elif defined(ESP8266)
-  WebServer server{80};
-  void saveWiFiEEPROM(const char* ssid, const char* pass);
-  void loadWiFiEEPROM(char* ssid, char* pass);
+  BluetoothSerial bt;
+#else
+  ESP8266WebServer server{80};
 #endif
 
-  void startAP();
-  void startWebServer();
-  void handleRoot();
-  void handleConnect();
+  String deviceName = "ESP32-Setup";
+  String savedSSID = "";
+  String savedPASS = "";
 };
-
-#endif
