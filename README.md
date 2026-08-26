@@ -4,7 +4,7 @@ Librería ligera para crear un portal WiFi de configuración en ESP32,
 pensada para funcionar sin problemas en ArduinoDroid.
 
 ## Uso básico
-
+```
 #include <SimpleWiFiManager.h>
 
 SimpleWiFiManager wifi;
@@ -17,7 +17,7 @@ void setup() {
 void loop() {
   wifi.loop();
 }
-
+```
 ## Características
 
 - Portal WiFi simple (AP + Web)
